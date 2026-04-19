@@ -16,3 +16,50 @@
       ansible.builtin.file:
         path: /tmp/setup-fastfetch.sh
         state: absent
+
+    - name: Ensure fastfetch config directory exists for ai-server
+      ansible.builtin.file:
+        path: /home/ai-server/.config/fastfetch
+        state: directory
+        owner: ai-server
+        group: ai-server
+        mode: '0755'
+
+    - name: Copy fastfetch config to ai-server home
+      ansible.builtin.copy:
+        src: /root/.config/fastfetch/config.jsonc
+        dest: /home/ai-server/.config/fastfetch/config.jsonc
+        remote_src: true
+        owner: ai-server
+        group: ai-server
+        mode: '0644'
+
+    - name: Remove old fastfetch SSH block from ai-server bashrc
+      ansible.builtin.blockinfile:
+        path: /home/ai-server/.bashrc
+        marker: "### FASTFETCH_SSH_BLOCK_{mark} ###"
+        state: absent
+
+    - name: Add fastfetch SSH block to ai-server bashrc
+      ansible.builtin.blockinfile:
+        path: /home/ai-server/.bashrc
+        marker: "### FASTFETCH_SSH_BLOCK_{mark} ###"
+        block: |
+          # Custom coloured prompt
+          PS1='\[\033[90m\]\t \[\033[1;32m\]\u@\[\033[1;36m\]\h \[\033[1;34m\]\w\[\033[0m\]\$ '
+
+          # Show custom Last login + fastfetch for interactive SSH sessions
+          if [ -n "$SSH_CONNECTION" ] && [ -t 1 ]; then
+            LAST_LOGIN_LINE="$(last -i "$USER" | grep -v 'still logged in' | grep -v '^wtmp begins' | sed -n '2p')"
+
+            if [ -n "$LAST_LOGIN_LINE" ]; then
+              LAST_IP="$(echo "$LAST_LOGIN_LINE" | awk '{print $3}')"
+              LAST_DATE="$(echo "$LAST_LOGIN_LINE" | awk '{print $4, $5, $6, $7}')"
+              printf "\033[1;38;5;250mLast login:\033[0m \033[38;5;255m%s\033[0m \033[1;38;5;250mfrom\033[0m \033[38;5;204m%s\033[0m\n\n" "$LAST_DATE" "$LAST_IP"
+            fi
+
+            fastfetch
+          fi
+        owner: ai-server
+        group: ai-server
+        mode: '0644'
