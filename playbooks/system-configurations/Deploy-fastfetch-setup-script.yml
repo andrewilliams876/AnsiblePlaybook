@@ -1,0 +1,18 @@
+- name: Deploy fastfetch setup script
+  hosts: homelab
+  become: true
+
+  tasks:
+    - name: Copy script to target
+      ansible.builtin.copy:
+        src: playbooks/files/scripts/setup-fastfetch.sh
+        dest: /tmp/setup-fastfetch.sh
+        mode: '0755'
+
+    - name: Run script
+      ansible.builtin.command: /tmp/setup-fastfetch.sh
+
+    - name: Remove script after run
+      ansible.builtin.file:
+        path: /tmp/setup-fastfetch.sh
+        state: absent
