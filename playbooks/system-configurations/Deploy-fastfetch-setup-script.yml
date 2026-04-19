@@ -5,7 +5,7 @@
   tasks:
     - name: Copy script to target
       ansible.builtin.copy:
-        src: playbooks/files/scripts/setup-fastfetch.sh
+        src: ../files/scripts/setup-fastfetch.sh
         dest: /tmp/setup-fastfetch.sh
         mode: '0755'
 
