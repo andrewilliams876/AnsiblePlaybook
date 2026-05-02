@@ -1,0 +1,82 @@
+---
+- name: Update NetBird containers
+  hosts: netbird
+  become: true
+  gather_facts: false
+
+  vars:
+    netbird_image: netbirdio/netbird:latest
+
+    netbird_compose_paths:
+      pi4-connector: /home/andrewilliams/Docker/netbird
+      ai-server-connector: /home/ai-server/Docker/netbird
+
+    netbird_pve_container_name: netbird-client
+    netbird_pve_hostname: pve-connector
+
+  tasks:
+    - name: Ensure NetBird setup key is available for docker-run host
+      ansible.builtin.fail:
+        msg: "NETBIRD_SETUP_KEY is missing. Add it as a secret environment variable in Semaphore."
+      when:
+        - inventory_hostname == "pve-connector"
+        - lookup('env', 'NETBIRD_SETUP_KEY') | length == 0
+
+    - name: Ensure NetBird management URL is available for docker-run host
+      ansible.builtin.fail:
+        msg: "NETBIRD_MANAGEMENT_URL is missing. Add it as a secret environment variable in Semaphore."
+      when:
+        - inventory_hostname == "pve-connector"
+        - lookup('env', 'NETBIRD_MANAGEMENT_URL') | length == 0
+
+    - name: Pull latest NetBird image
+      ansible.builtin.command: docker pull {{ netbird_image }}
+      register: pull_result
+      changed_when: "'Downloaded newer image' in pull_result.stdout or 'Pull complete' in pull_result.stdout"
+
+    - name: Pull latest NetBird image using Docker Compose
+      when: inventory_hostname in netbird_compose_paths
+      ansible.builtin.command: docker compose pull netbird
+      args:
+        chdir: "{{ netbird_compose_paths[inventory_hostname] }}"
+      register: compose_pull
+
+    - name: Recreate NetBird container using Docker Compose
+      when: inventory_hostname in netbird_compose_paths
+      ansible.builtin.command: docker compose up -d netbird
+      args:
+        chdir: "{{ netbird_compose_paths[inventory_hostname] }}"
+      register: compose_up
+
+    - name: Stop old NetBird docker-run container
+      when: inventory_hostname == "pve-connector"
+      ansible.builtin.command: docker stop {{ netbird_pve_container_name }}
+      failed_when: false
+
+    - name: Remove old NetBird docker-run container
+      when: inventory_hostname == "pve-connector"
+      ansible.builtin.command: docker rm {{ netbird_pve_container_name }}
+      failed_when: false
+
+    - name: Recreate NetBird docker-run container
+      when: inventory_hostname == "pve-connector"
+      ansible.builtin.command: >
+        docker run -d
+        --name {{ netbird_pve_container_name }}
+        --hostname {{ netbird_pve_hostname }}
+        --restart unless-stopped
+        --cap-add=NET_ADMIN
+        -e NB_SETUP_KEY={{ lookup('env', 'NETBIRD_SETUP_KEY') }}
+        -v netbird-client:/var/lib/netbird
+        -e NB_MANAGEMENT_URL={{ lookup('env', 'NETBIRD_MANAGEMENT_URL') }}
+        {{ netbird_image }}
+      no_log: true
+
+    - name: Show NetBird container status
+      ansible.builtin.command: docker ps --filter name=netbird --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Image{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
+      register: netbird_status
+      changed_when: false
+
+    - name: Print NetBird container status
+      ansible.builtin.debug:
+        var: netbird_status.stdout_lines
